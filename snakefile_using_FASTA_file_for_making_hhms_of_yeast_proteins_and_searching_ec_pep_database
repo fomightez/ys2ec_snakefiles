@@ -1,0 +1,158 @@
+# Snakemake pipeline for getting HHMs for yeast proteins in the list that 
+# Alana sent me (Tue, Nov 3, 2020 10:33 AM in email entitled 
+# 'Re: custom databases to try searching against') against 2020_06 uniclust 
+# database and searching the ec_pep database for homologs via hhblits.
+# Needs standard packages for pyfaidx, bipoython and pandas installed via pip.
+# Initiate with `snakemake -j X` if the file is named `Snakefile`, 
+# replacing the `X` with the number of cores available. Otherwise, initiate with 
+# `snakemake -s <snakefile_name> --cores X` if the file is named any thing other
+# than `Snakefile`, where `X` is the number of cores.
+# To just initiate making the individual FASTA sequence files, run something 
+# like:
+# `snakemake -j 8 split_multifasta`, where the number 8 is replaced by the 
+# result of the command `getconf _NPROCESSORS_ONLN`.
+# If you are using more than eight cores, edit the `hhblits` steps to have the 
+# higher number of cores for the `threads` setting.
+
+# INPUT YEAST PROTEIN SEQUENCES-------------------------------------------------
+# Alana provided a file of sequences in a multi-sequence FASTA file. So I need
+# to use that as sources of names of the proteins and for the sequences. Here,
+# I'll use pyfaidx to scan through and make a list of the protein ids in the 
+# FASTA file. I'll put making the single FASTA files to provide as input for 
+# hhblits in the actual snakemake rules so in case the input file gets edited,
+# snakemake can just handle adding in the new sequence to the pipeline rather 
+# than making all the individual files again. If they got made again, the entire
+# pipeline would be triggered to re-run for everything.
+seq_file_to_use  = "Sc_Pol_from_Alana11-3-2020.fasta" # name of the FASTA file 
+# provided by Alana
+import os
+import sys
+from pyfaidx import Fasta
+seq_ids = [] # the highly conserved ones for perspective
+records = Fasta(seq_file_to_use)
+for seq in records:
+    seq_ids.append(seq.name) # I had been using `.long_name[0]` in the 
+    # notebook 'Searching for homologs among deduced proteins from a genome 
+    # using BLAST and Python.ipynb' in my blast-binder repo, which this code 
+    # block is loosely based on, but Alana's provided FASTA file has spaces 
+    # between the sequence entries that for some reason causes`.long_name[0]` to
+    # then include the less-than-symbol at the front, whereas `seq.name` 
+    # doesn't. Both do the same in the current code but including  `.long_name` 
+    # was meant to add for more options for adapting the code.
+
+
+
+
+# DATABASES---------------------------------------------------------------------
+uniclust30_pathname = "./UniRef30/UniRef30_2020_06" # the path and file for the 
+# specific uniclust30 database to use to make hhms for the input yeast proiteins
+custom_database_name =  "ec_pep" # custom Encephalitozoon cuniculi db
+
+# FILES THAT WILL BE GENERATED--------------------------------------------------
+sequence_fasta_files = expand("A11320_{protein}.fa",protein=seq_ids)  # based on 
+# 'A11320_{protein_name}.fa', where `A11320` is to indicate the multi-sequence 
+# FASTA file file Alana provided 11-3-2020 -- these are the individual files for
+# each of Alana's sequences.
+hhm_files = expand("A11320_{protein}.hhm",protein=seq_ids) # based on 
+# 'A11320_{protein_name}.hhm'
+results_files = expand("results_A11320_{protein}.hhr",protein=seq_ids) # based on 
+# 'results_A11320_{protein_name}.hhr'
+hhms_archive = 'Alana11-3-2020_proteins_hhms_against_2020_6_uniclust30.tar.gz'
+results_archive = 'results_of_Alana11-3-2020_proteins_hhms_against_ec_pep_db.tar.gz'
+
+
+##----------------HELPER FUNCTIONS----------------------------------------------
+# Function to be used when splitting out the multi-sequence FASTA file
+def one_seq_to_file(prot_seq, description, name_to_use):
+    '''
+    function to save a single sequence as a file in FASTA-format
+
+    based on same named function from the notebook 'Searching for homologs 
+    among deduced proteins from a genome using BLAST and Python.ipynb' in my 
+    blast-binder repo
+    
+    NOTE THAT NOT JUST USING `!faidx --split-files <seq_file>` because
+    want to control fully what files will be named.
+    '''
+    # save the protein sequence as FASTA
+    chunk_size = 70 #<---amino acids per line to have in FASTA (note this chunking to
+    # multiple lines is the opposite of what PatMatch's `unjustify_fasta.pl` does)
+    prot_seq_chunks = [prot_seq[i:i+chunk_size] for i in range(
+        0, len(prot_seq),chunk_size)]
+    prot_seq_fa = ">" + description + "\n"+ "\n".join(prot_seq_chunks)
+    p_output_file_name = name_to_use
+    with open(p_output_file_name, 'w') as output:
+        output.write(prot_seq_fa)
+    sys.stderr.write("\n\nProtein sequence saved as "
+        "`{}`.".format(p_output_file_name)) 
+
+
+
+
+# SNAKEMAKE RULES---------------------------------------------------------------
+
+rule all:
+    input:
+        hhms_archive,
+        results_archive
+
+
+# Delete fetched and generated files so we can re-run things for development
+'''
+note that first I add fabricated examples of all the types files to delete so if 
+one series doesn't exist yet, or anymore, cleaning step doesn't cause an error.
+'''
+rule clean:
+    shell:
+        '''
+        touch A11320_171y18y18oaisksilzl.fa
+        touch A11320_171y18y18oaisksilzl.hhm
+        touch A11320_171y18y18oaisksilzl.hhr
+        touch Alana11-3-2020_proteins_hhms_against_171y18y18oaisksilzl.tar.gz
+        touch results_of_Alana11-3-2020_proteins_hhms_171y18y18oaisksilzl.tar.gz
+        rm A11320_*.fa
+        rm A11320_*.hhm
+        rm A11320_*.hhr
+        rm Alana11-3-2020_proteins_hhms_against_*.tar.gz
+        rm results_of_Alana11-3-2020_proteins_hhms_*.tar.gz
+        '''
+
+
+
+# Use the muti-sequence FASTA file provided to make individual FASTA files for 
+# each sequence to pass into the hhblits command in order to make hhms for each
+rule split_multifasta:
+    input: seq_file_to_use
+    output: sequence_fasta_files
+    run:
+        records = Fasta(seq_file_to_use)
+        for seq in records:
+            one_seq_to_file(str(seq), seq.name, f"A11320_{seq.name}.fa")
+
+# Use the sequences of the yeast proteins to make hhms from the uniclust30 db
+rule make_hhms:
+    input: "A11320_{id}.fa"
+    output: "A11320_{id}.hhm"
+    threads: 8
+    shell: 'hhblits -i {input} -d {uniclust30_pathname} -ohhm {output} -n 2 -cpu {threads} -v 0'
+
+# Using the yeast protein hhms search the custom db of hhms for homologs
+rule search_for_homologs_with_hhms:
+    input: "A11320_{id}.hhm"
+    output: "results_A11320_{id}.hhr" #note this needs to be different than `A11320_{id}.hhr` because as part of `make_hhms`, an `.hhr` file gets made as well and then this rule gets skipped.
+    threads: 4
+    shell: 'hhblits -i {input} -o {output} -d {custom_database_name} -n 2 -cpu {threads}'
+
+
+# Create archives with the hhms
+rule make_hhm_archive:
+    input: hhm_files
+    output: hhms_archive
+    shell: 'tar -czvf {output} {input}; echo "Be sure to download {output}."'
+
+
+# Create archives with the results
+rule make_results_archive:
+    input: results_files
+    output: results_archive
+    shell: 'tar -czvf {output} {input}; echo "Be sure to download {output}."'
