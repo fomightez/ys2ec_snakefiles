@@ -7,6 +7,13 @@ In the other, you provide the standard yeast names before running the the snakef
 
 This repo and the snakefiles herein accompany the Knutson laboratory publication Belkevich et al, 2023. (Details to be updated shortly.)
 
+------------------------
+
+
+
+Main supporting software
+-----------------------
+
 HH-suite3 reference:
 
 [Steinegger M, Meier M, Mirdita M, Vöhringer H, Haunsberger S J, and Söding J (2019)
