@@ -1,9 +1,17 @@
 # ys2ec_snakefiles
 
-Snakemake snakefiles for making HHMs of yeast proteins and searching against custom-made ec_pep database.
+Snakemake snakefiles for making HHMs of yeast proteins and searching against [custom-made ec_pep database](https://github.com/soedinglab/hh-suite/wiki#building-customized-databases).
 
-One takes a multi-sequence FASTA as input.
-In the otherm you provide the standard yeast names before running the the snake file with [Snakemake]().
+One snakefile takes a multi-sequence FASTA as input.  
+In the other, you provide the standard yeast names before running the the snakefile with [Snakemake](https://pubmed.ncbi.nlm.nih.gov/34035898/).
+
+This repo and the snakefiles herein accompany the Knutson laboratory publication Belkevich et al, 2023. (Details to be updated shortly.)
+
+HH-suite3 reference:
+
+[Steinegger M, Meier M, Mirdita M, Vöhringer H, Haunsberger S J, and Söding J (2019)
+HH-suite3 for fast remote homology detection and deep protein annotation, *BMC Bioinformatics*, 473. doi: 10.1186/s12859-019-3019-7 PMID: 3152110](https://pubmed.ncbi.nlm.nih.gov/31521110/)
+
 
 Snakemake reference:
 
