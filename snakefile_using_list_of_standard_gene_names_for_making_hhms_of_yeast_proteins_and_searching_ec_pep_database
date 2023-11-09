@@ -1,0 +1,117 @@
+# Snakemake pipeline for getting HHMs for yeast proteins provided as standard 
+# names for the corresponding gene against 2020_06 uniclust database and 
+# searching the ec_pep database for homologs via hhblits.
+# Needs to have the development version of intermine webservice presently; get 
+# that with 
+# `pip install https://github.com/intermine/intermine-ws-python/archive/dev.zip`
+# also needs standard packages for bipoython and pandas installed via pip.
+# Initiate with `snakemake -j X` if the file is named `Snakefile`, 
+# replacing the `X` with the number of cores available. Otherwise, initiate with 
+# `snakemake -s <snakefile_name> --cores X` if the file is named any thing other
+# than `Snakefile`, where `X` is the number of cores.
+# To just initiate the fetching of the sequences, run something like:
+# `snakemake -j 8 fetch_sequences`, where the number 8 is replaced by the 
+# result of the command `getconf _NPROCESSORS_ONLN`.
+# If you are using more than eight cores, edit the `hhblits` steps to have the 
+# higher number of cores for the `threads` setting.
+
+# INPUT YEAST GENES TO FETCH PROTEIN SEQUENCES ENCODED--------------------------
+seqs_to_get = ["NOP1","VPH1","RPB1"] # the highly conserved ones for perspective
+seqs_to_get += (["RAD54",<your_list_here>]) # Additional standard names listed here
+
+# DATABASES---------------------------------------------------------------------
+uniclust30_pathname = "./UniRef30/UniRef30_2020_06" # the path and file for the 
+# specific uniclust30 database to use to make hhms for the input yeast proiteins
+custom_database_name =  "ec_pep" # custom Encephalitozoon cuniculi db
+
+# FILES THAT WILL BE GENERATED--------------------------------------------------
+sequence_fasta_files = expand("S288C_{seqs}.fa",seqs=seqs_to_get)  # based on 
+# 'S288C_{protein_name}.hhm'
+hhm_files = expand("S288C_{seqs}.hhm",seqs=seqs_to_get) # based on 
+# 'S288C_{protein_name}.hhm'
+results_files = expand("results_S288C_{seqs}.hhr",seqs=seqs_to_get) # based on 
+# 'results_S288C_{protein_name}.hhr'
+hhms_archive = 'my_proteins_hhms_against_2020_6_uniclust30.tar.gz'
+results_archive = 'results_of_my_protein_hhms_against_ec_pep_db.tar.gz'
+
+
+import os
+import sys
+
+
+# SNAKEMAKE RULES---------------------------------------------------------------
+
+rule all:
+    input:
+        hhms_archive,
+        results_archive
+
+
+# Delete fetched and generated files so we can re-run things for development
+'''
+note that first I add fabricated examples of all the types files to delete so if 
+one series doesn't exist yet, or anymore, cleaning step doesn't cause an error.
+'''
+rule clean:
+    shell:
+        '''
+        touch S288C_171y18y18oaisksilzl.fa
+        touch S288C_171y18y18oaisksilzl.fsa
+        touch S288C_171y18y18oaisksilzl.hhm
+        touch S288C_171y18y18oaisksilzl.hhr
+        touch results_S288C_171y18y18oaisksilzl.hhr
+        touch my_proteins_hhms_against_171y18y18oaisksilzl.tar.gz
+        touch results_of_my_protein_hhms_171y18y18oaisksilzl.tar.gz
+        rm S288C_*.fa
+        rm S288C_*.fsa
+        rm S288C_*.hhm
+        rm S288C_*.hhr
+        rm results_S288C_*.hhr
+        rm my_proteins_hhms_against_*.tar.gz
+        rm results_of_my_protein_hhms_*.tar.gz
+        '''
+
+
+
+# Obtain the script for getting the protein sequences as FASTA based on the 
+# gene names
+rule seq_fetching_script:
+    output: 'get_protein_seq_as_FASTA.py'
+    shell: 'curl -O https://raw.githubusercontent.com/fomightez/yeastmine/master/get_protein_seq_as_FASTA.py'
+
+# Get the sequences needed
+rule fetch_sequences:
+    input: 'get_protein_seq_as_FASTA.py'
+    output: sequence_fasta_files
+    run:
+        for seq in seqs_to_get:
+            os.system(f"python get_protein_seq_as_FASTA.py {seq}")
+            shell(f"mv S288C_*_protein.fsa S288C_{seq}.fa")
+
+# Use the sequences of the yeast proteins to make hhms from the uniclust30 db
+rule make_hhms:
+    input: "S288C_{id}.fa"
+    output: "S288C_{id}.hhm"
+    threads: 8
+    shell: 'hhblits -i {input} -d {uniclust30_pathname} -ohhm {output} -n 2 -cpu {threads} -v 0'
+
+# Using the yeast protein hhms search the custom db of hhms for homologs
+rule search_for_homologs_with_hhms:
+    input: "S288C_{id}.hhm"
+    output: "results_S288C_{id}.hhr" #note this needs to be different than `S288C_{id}.hhr` because as part of `make_hhms`, an `.hhr` file gets made as well and then this rule gets skipped.
+    threads: 4
+    shell: 'hhblits -i {input} -o {output} -d {custom_database_name} -n 2 -cpu {threads}'
+
+
+# Create archives with the hhms
+rule make_hhm_archive:
+    input: hhm_files
+    output: hhms_archive
+    shell: 'tar -czvf {output} {input}; echo "Be sure to download {output}."'
+
+
+# Create archives with the results
+rule make_results_archive:
+    input: results_files
+    output: results_archive
+    shell: 'tar -czvf {output} {input}; echo "Be sure to download {output}."'
